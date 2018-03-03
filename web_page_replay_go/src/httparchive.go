@@ -26,6 +26,7 @@ const usage = "%s [ls|cat|edit] [options] archive_file [output_file]"
 
 type Config struct {
 	method, host, fullPath string
+	encoding               bool
 }
 
 func (cfg *Config) Flags() []cli.Flag {
@@ -47,6 +48,11 @@ func (cfg *Config) Flags() []cli.Flag {
 			Value:       "",
 			Usage:       "Only show URLs matching this full path.",
 			Destination: &cfg.fullPath,
+		},
+		cli.BoolFlag{
+			Name:        "encoding",
+			Usage:       "Decode/encode response body according to Content-Encoding header.",
+			Destination: &cfg.encoding,
 		},
 	}
 }
@@ -102,6 +108,12 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 		if err := req.Write(w); err != nil {
 			return err
 		}
+		if cfg.encoding {
+			err := webpagereplay.DecompressResponse(resp)
+			if err != nil {
+				return fmt.Errorf("couldn't decompress body: %v", err)
+			}
+		}
 		return resp.Write(w)
 	}
 
@@ -117,6 +129,13 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 				req.Body.Close()
 			}
 			return nil, nil, fmt.Errorf("couldn't unmarshal response: %v", err)
+		}
+		if cfg.encoding {
+			// Compress body back according to Content-Encoding
+			err = webpagereplay.CompressResponse(resp)
+			if err != nil {
+				return nil, nil, fmt.Errorf("couldn't compress body: %v", err)
+			}
 		}
 		// Read resp.Body into a buffer since the tmpfile is about to be deleted.
 		body, err := ioutil.ReadAll(resp.Body)
@@ -165,7 +184,7 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 			defer tmpf.Close()
 			newReq, newResp, err := unmarshalAfterEdit(tmpf)
 			if err != nil {
-				fmt.Printf("Error in editing request. Try again.\n")
+				fmt.Printf("Error in editing request. Try again: %v\n", err)
 				continue
 			}
 			return newReq, newResp, nil
@@ -176,7 +195,7 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 		return
 	}
 
-	outf, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE, os.FileMode(0660))
+	outf, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(0660))
 	if err != nil {
 		fmt.Printf("Error opening output file %s: %v\n", outfile, err)
 		return
