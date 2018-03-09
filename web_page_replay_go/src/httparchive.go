@@ -26,7 +26,7 @@ const usage = "%s [ls|cat|edit] [options] archive_file [output_file]"
 
 type Config struct {
 	method, host, fullPath string
-	encoding               bool
+	decodeResponseBody               bool
 }
 
 func (cfg *Config) Flags() []cli.Flag {
@@ -50,9 +50,9 @@ func (cfg *Config) Flags() []cli.Flag {
 			Destination: &cfg.fullPath,
 		},
 		cli.BoolFlag{
-			Name:        "encoding",
+			Name:        "decode_response_body",
 			Usage:       "Decode/encode response body according to Content-Encoding header.",
-			Destination: &cfg.encoding,
+			Destination: &cfg.decodeResponseBody,
 		},
 	}
 }
@@ -108,7 +108,7 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 		if err := req.Write(w); err != nil {
 			return err
 		}
-		if cfg.encoding {
+		if cfg.decodeResponseBody {
 			if err := webpagereplay.DecompressResponse(resp); err != nil  {
 				return fmt.Errorf("couldn't decompress body: %v", err)
 			}
@@ -129,7 +129,7 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 			}
 			return nil, nil, fmt.Errorf("couldn't unmarshal response: %v", err)
 		}
-		if cfg.encoding {
+		if cfg.decodeResponseBody {
 			// Compress body back according to Content-Encoding
 			if err := compressResponse(resp); err != nil {
 				return nil, nil, fmt.Errorf("couldn't compress response: %v", err)
@@ -228,7 +228,7 @@ func compressResponse(resp *http.Response) error {
 		return err
 	}
 	if ce != newCE {
-		return fmt.Errorf("can't compress body to desired Content-Encoding: '%s'", ce)
+		return fmt.Errorf("can't compress body to '%s' recieved Content-Encoding: '%s'", ce, newCE)
 	}
 	resp.Body = ioutil.NopCloser(bytes.NewReader(body))
 	return nil

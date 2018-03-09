@@ -6,7 +6,6 @@ package webpagereplay
 
 import (
 	"bytes"
-	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -120,77 +119,5 @@ func TestInjectScriptToGzipResponse(t *testing.T) {
 	expectedContent := []byte("<html><script>var foo = 1;</script></html>")
 	if !bytes.Equal(expectedContent, body) {
 		t.Fatal(fmt.Errorf("expected : %s \n actual: %s \n", expectedContent, body))
-	}
-}
-
-func TestCompressResponse(t *testing.T) {
-	plainTextBody := []byte("<html></html>")
-	var gzippedBody bytes.Buffer
-	gz := gzip.NewWriter(&gzippedBody)
-	if _, err := gz.Write(plainTextBody); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	var deflateBody bytes.Buffer
-	fl, _ := flate.NewWriter(&deflateBody, flate.DefaultCompression)
-	if _, err := fl.Write(plainTextBody); err != nil {
-		t.Fatal(err)
-	}
-	if err := fl.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	testTable := map[string]map[string][]byte{
-		"gzip": map[string][]byte{
-			"Content-Encoding": []byte("gzip"),
-			"input":            plainTextBody,
-			"expected":         gzippedBody.Bytes(),
-		},
-		"deflate": map[string][]byte{
-			"Content-Encoding": []byte("deflate"),
-			"input":            plainTextBody,
-			"expected":         deflateBody.Bytes(),
-		},
-		"alreadyGzip": map[string][]byte{
-			"Content-Encoding": []byte("gzip"),
-			"input":            gzippedBody.Bytes(),
-			"expected":         gzippedBody.Bytes(),
-		},
-		"alreadyDeflate": map[string][]byte{
-			"Content-Encoding": []byte("deflate"),
-			"input":            deflateBody.Bytes(),
-			"expected":         deflateBody.Bytes(),
-		},
-	}
-
-	for name, data := range testTable {
-		resp := &http.Response{
-			StatusCode: 200,
-			Header: http.Header{
-				"Content-Type":     []string{"text/html"},
-				"Content-Encoding": []string{string(data["Content-Encoding"])},
-			},
-			Body: ioutil.NopCloser(bytes.NewReader(data["input"])),
-		}
-
-		if err := CompressResponse(resp); err != nil {
-			t.Fatal(err)
-		}
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, b := range body {
-			if b != data["expected"][i] {
-				t.Fatalf(
-					"sub-test %s \n expected : %s \n actual: %s \n",
-					name,
-					body[i],
-					data["expected"][i])
-			}
-		}
 	}
 }
