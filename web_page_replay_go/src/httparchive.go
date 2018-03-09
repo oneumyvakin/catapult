@@ -109,8 +109,7 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 			return err
 		}
 		if cfg.encoding {
-			err := webpagereplay.DecompressResponse(resp)
-			if err != nil {
+			if err := webpagereplay.DecompressResponse(resp); err != nil  {
 				return fmt.Errorf("couldn't decompress body: %v", err)
 			}
 		}
@@ -132,9 +131,8 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 		}
 		if cfg.encoding {
 			// Compress body back according to Content-Encoding
-			err = webpagereplay.CompressResponse(resp)
-			if err != nil {
-				return nil, nil, fmt.Errorf("couldn't compress body: %v", err)
+			if err := compressResponse(resp); err != nil {
+				return nil, nil, fmt.Errorf("couldn't compress response: %v", err)
 			}
 		}
 		// Read resp.Body into a buffer since the tmpfile is about to be deleted.
@@ -211,6 +209,29 @@ func edit(cfg *Config, a *webpagereplay.Archive, outfile string) {
 	}
 
 	fmt.Printf("Wrote edited archive to %s\n", outfile)
+}
+
+// Compresses Response Body in place.
+func compressResponse(resp *http.Response) error {
+	ce := strings.ToLower(resp.Header.Get("Content-Encoding"))
+	if ce == "" {
+		return nil
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	body, newCE, err := webpagereplay.CompressBody(ce, body)
+	if err != nil {
+		return err
+	}
+	if ce != newCE {
+		return fmt.Errorf("can't compress body to desired Content-Encoding: '%s'", ce)
+	}
+	resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+	return nil
 }
 
 func main() {
